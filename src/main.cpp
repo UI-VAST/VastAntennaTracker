@@ -27,6 +27,7 @@
 //46.73440383906368, -117.03598306509241
 
 //46.737524001312956, -117.1409430634887
+
 double balloonLat = 46.73440383906368;
 double balloonLong = -117.03598306509241;
 float balloonAlt = .7;
@@ -66,8 +67,8 @@ float DegreeToRadians(float d){
 
 void desiredAbsolutePose(double B_LAT, double B_LONG, float B_ALT, double A_LAT, double A_LONG, float A_ALT){
     //#returns the desired antenna tracker pose in degrees, relative to the horizon and compass azimuth
+    //#Only for distances not exceeding 475 km (295 miles)
     //#antenna coordinate frame
-    
     //#determine distance from balloon to antenna
     //#Ellipsoidal Earth Projected Plane - FLAT EARTH ASSUMPTION
     //#Source - https://www.govinfo.gov/content/pkg/CFR-2005-title47-vol4/pdf/CFR-2005-title47-vol4-sec73-208.pdf
@@ -118,41 +119,44 @@ typedef struct packet {
   double lat;
   double lng;
   float alt;
-  float batv;
-  float current;
-  float temp;
+  float speed;
+  int sats;
   int packetcount;
   int cutdown_time;
   bool timer_running;
   bool cutdown_status;
+  bool parachute_status;
+  int lora_bad_packet;
+  int rfd_bad_packet;
 } packet;
 packet myPacket;
 
 //data send to RFD900
 typedef struct recieved_data{
-    int cutdown_time;   
-    bool RunTimer;
-    bool cutdown;
+    int cutdown_time;
     bool update_cutdown_time;
+    bool RunTimer;
+    bool trigger_cutdown;
+    bool trigger_parachute;   
 }recieved_data;
 recieved_data txbuf;
 
 //data share with esp
 typedef struct espdata {
-  float lat;
-  float lng;
+  double lat;
+  double lng;
   float alt;
-  float batv;
-  float current;
-  float temp;
+  float speed;
+  int sats;
   int packetcount;
   int cutdown_time;
   bool timer_running;
   bool cutdown_status;
+  bool parachute_status;
+  int lora_bad_packet;
+  int rfd_bad_packet;
   int heading;
   int angle;
-  int packets_recieved;
-  int badpacket;
 } espdata;
 espdata espTX;
 
@@ -162,10 +166,12 @@ typedef struct ControllerData{
   char mode;
   int heading_offset;
   int angle_offset;
-  int SetCutdownTime;
-  bool SendCutdown;
-  bool UpdateCutdownTime;
+
+  int cutdown_time;
+  bool update_cutdown_time;
   bool RunTimer;
+  bool trigger_cutdown;
+  bool trigger_parachute;
 } ControllerData;
 ControllerData espRX;
 
@@ -178,11 +184,13 @@ void StepperSend(){
 }
 
 void RFDSend(){
-
-    txbuf.cutdown = espRX.SendCutdown;
+    //update data in the txbuf
+    txbuf.trigger_cutdown = espRX.trigger_cutdown;
     txbuf.RunTimer = espRX.RunTimer;
-    txbuf.cutdown_time = espRX.SetCutdownTime;
-    txbuf.update_cutdown_time = espRX.UpdateCutdownTime;
+    txbuf.cutdown_time = espRX.cutdown_time;
+    txbuf.update_cutdown_time = espRX.update_cutdown_time;
+    txbuf.trigger_parachute = espRX.trigger_parachute;
+    //send the  data
     uint32_t crc = CRC::Calculate(&txbuf, sizeof(txbuf), CRC::CRC_32());
     uint8_t payload[sizeof(txbuf)+sizeof(crc)];
     memcpy(&payload[0], &txbuf, sizeof(txbuf));
@@ -231,7 +239,7 @@ void RFDPacketReceived(const uint8_t* buffer, size_t size)
   memcpy(&crc2, &buf[sizeof(myPacket)], sizeof(crc2));
   if(crc1 == crc2){
     memcpy(&myPacket, &buf[0], sizeof(myPacket));
-    espTX.packets_recieved++;
+    
     balloonLat = myPacket.lat;
     balloonLong = myPacket.lng;
     balloonAlt = myPacket.alt/1000;
@@ -239,16 +247,13 @@ void RFDPacketReceived(const uint8_t* buffer, size_t size)
     espTX.lat = myPacket.lat;
     espTX.lng = myPacket.lng;
     espTX.alt = myPacket.alt;
-    espTX.batv = myPacket.batv;
-    espTX.current = myPacket.current;
-    espTX.temp = myPacket.temp;
     espTX.packetcount = myPacket.packetcount;
     espTX.cutdown_time = myPacket.cutdown_time;
     espTX.timer_running = myPacket.timer_running;
     espTX.cutdown_status = myPacket.cutdown_status;
   }
   else{
-    espTX.badpacket++;
+    espTX.rfd_bad_packet++;
   }  
 }
 
@@ -328,7 +333,7 @@ void SensorRead(){
       espTX.angle = angle;
       espTX.heading = heading;
 
-      if(espRX.SendCutdown != myPacket.cutdown_status || espRX.RunTimer != myPacket.timer_running || espRX.UpdateCutdownTime){
+      if(espRX.trigger_cutdown != myPacket.cutdown_status || espRX.RunTimer != myPacket.timer_running || espRX.update_cutdown_time){
         RFDSend();
       }
       
@@ -446,10 +451,10 @@ void setup() {
   mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
 
   espRX.mode = 'm';
-  espRX.SetCutdownTime = 3600;
+  espRX.cutdown_time = 3600;
   espRX.heading_offset = 12;
-  espRX.SendCutdown = false;
-  espRX.UpdateCutdownTime = false;
+  espRX.trigger_cutdown = false;
+  espRX.update_cutdown_time = false;
   espRX.RunTimer = false;
 }
 
