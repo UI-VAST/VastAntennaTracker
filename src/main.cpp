@@ -45,8 +45,12 @@ float heading;
 
 unsigned long previousMillis;
 unsigned long previousMillis1;
-int Stepper_X;
-int Stepper_Y;
+
+#define upPin 27
+#define downPin 26
+#define leftPin 25
+#define rightPin 33
+
 
 double unitCircToAzimith(double unit){
     //#input MUST be in deg
@@ -176,12 +180,7 @@ typedef struct ControllerData{
 ControllerData espRX;
 
 
-void StepperSend(){
-  int x = map(Stepper_X, -1000, 1000, 24, 1000);
-  int y = map(Stepper_Y, -1000, 1000, 24, 1000);
-  ledcWrite(1, x);
-  ledcWrite(2, y);
-}
+
 
 void RFDSend(){
     //update data in the txbuf
@@ -223,9 +222,7 @@ void espNowSend(){
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     memcpy(&espRX, incomingData, sizeof(espRX));
     if(espRX.mode == 'm'){
-      //StepSendPacket(espRX.x, espRX.y);
-      Stepper_X = espRX.x;
-      Stepper_Y = espRX.y;
+
     }
     
 }
@@ -255,11 +252,6 @@ void RFDPacketReceived(const uint8_t* buffer, size_t size)
   else{
     espTX.rfd_bad_packet++;
   }  
-}
-
-void StepPacketReceived(const uint8_t* buffer, size_t size)
-{
-
 }
 
 void read_gps(){
@@ -302,113 +294,56 @@ void espNowSetup(){
   }
 }
 
-void SensorRead(){
-  unsigned long currentMillis1 = millis();
-  if (currentMillis1 - previousMillis1 >= 200) {
-      previousMillis1 = currentMillis1;
-      espNowSend();
-      //calculate azmith and elevation angle
-      desiredAbsolutePose(balloonLat, balloonLong, balloonAlt, antennaLat, antennaLong, antennaAlt);
 
-      sensors_event_t a, g, temp, m;
-      mag.getEvent(&m);
-      heading = atan2(m.magnetic.y, m.magnetic.x)* 180/PI;
-      
-      heading = heading + espRX.heading_offset;
-      
-      
-       if(heading < 0){
-        heading = (180 - abs(heading)) + 180;
-      }
-      
-      mpu.getEvent(&a, &g, &temp);
-      angle = atan2(a.acceleration.x, a.acceleration.y) * 180/PI;
-      angle = angle + espRX.angle_offset;
-      
-      if(angle < 0){
-        angle = (180 - abs(angle)) + 180;
-      }
-      angle = angle - 90;
+//calculate azmith and elevation angle
+//desiredAbsolutePose(balloonLat, balloonLong, balloonAlt, antennaLat, antennaLong, antennaAlt);
 
-      espTX.angle = angle;
-      espTX.heading = heading;
+void ManualControl(){
+  if(espRX.x > 500){
+    digitalWrite(upPin, HIGH);
+  }
+  if(espRX.x < -500){
+    digitalWrite(downPin, HIGH);
+  }
+  if(espRX.x < 500 && espRX.x > -500){
+    digitalWrite(downPin, LOW);
+    digitalWrite(upPin, LOW);
+  }
 
-      if(espRX.trigger_cutdown != myPacket.cutdown_status || espRX.RunTimer != myPacket.timer_running || espRX.update_cutdown_time){
-        RFDSend();
-      }
-      
-
+  if(espRX.y > 500){
+    digitalWrite(leftPin, HIGH);
+  }
+  if(espRX.y < -500){
+    digitalWrite(rightPin, HIGH);
+  }
+  if(espRX.y < 500 && espRX.y > -500){
+    digitalWrite(leftPin, LOW);
+    digitalWrite(rightPin, LOW);
   }
 }
 
-void MotorControll(){
-  if(espRX.mode == 'a'){
-    unsigned long currentMillis = millis();
-    int movex;
-    int movey;
-    if (currentMillis - previousMillis >= 30) {
-      previousMillis = currentMillis;
-      
-      if(setangle > 90){
-        setangle = 90;
-      }
-      if(setangle < 10){
-        setangle = 10;
-      }
+void AutoControl(){
 
-      //heading
-      if(heading > setheading){
-        movex = (((heading-setheading)*(heading-setheading)*10)+295);
-        if(movex > 1000){
-          movex = 1000;
-        }
-        if((heading-setheading)> 180){
-          movex = movex*-1;
-        }
-      }
-      else{
-        movex = (((heading-setheading)*(heading-setheading)*-10)-295);
-        if(movex < -1000){
-          movex = -1000;
-        }    
-      }
-
-      //elevation angle
-      if(angle > setangle){
-        movey = (((angle-setangle)*(angle-setangle)*2)+295);
-        if(movey > 1000){
-          movey = 1000;
-        }
-      }
-      else{
-        movey = (((angle-setangle)*(angle-setangle)*-2)-295);
-        if(movey < -1000){
-          movey = -1000;
-        }    
-      }
-      
-      //StepSendPacket(movex, movey);
-      Stepper_X = movex;
-      Stepper_Y = movey;
-      
-    }
-  }
-  
 }
+
+
 
 void setup() {
   pinMode(2, OUTPUT);
   digitalWrite(2, HIGH);
   delay(100);
   digitalWrite(2, LOW);
-
   espNowSetup();
 
-  //uart setup
-  ledcSetup(1, 1000, 10);
-  ledcAttachPin(25, 1);
-  ledcSetup(2, 1000, 10);
-  ledcAttachPin(26, 2);
+  pinMode(upPin, OUTPUT);
+  pinMode(downPin, OUTPUT);
+  pinMode(leftPin, OUTPUT);
+  pinMode(rightPin, OUTPUT);
+  
+  digitalWrite(upPin, LOW);
+  digitalWrite(downPin, LOW);
+  digitalWrite(leftPin, LOW);
+  digitalWrite(rightPin, LOW);
 
 
   //Serial.begin(57600);
@@ -420,35 +355,7 @@ void setup() {
   //begin gps
   uart1.begin(GPSBaud, SERIAL_8N1, 17, 16);  
   
-  if (!mpu.begin(105)) {
-    //Serial.println("Failed to find MPU6050 chip");
-    /*
-    while (1) {
-      digitalWrite(2, HIGH);
-      delay(100);
-      digitalWrite(2, LOW);
-      delay(100);
-    }
-    */
-  }
-  if(!mag.begin())
-  {
-    /* There was a problem detecting the HMC5883 ... check your connections */
-    //Serial.println("Ooops, no HMC5883 detected ... Check your wiring!");
-    /*
-    while(1){
-      digitalWrite(2, HIGH);
-      delay(100);
-      digitalWrite(2, LOW);
-      delay(100);
-    };
-    */
-  }
-  //Serial.println("MPU6050 Found!");
   
-  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
 
   espRX.mode = 'm';
   espRX.cutdown_time = 3600;
@@ -461,8 +368,14 @@ void setup() {
 void loop() {
   rfd900.update();
   read_gps();
-  SensorRead();
-  MotorControll();
-  StepperSend();
+
+
+  if(espRX.mode == 'm'){
+    ManualControl();
+  }
+  if(espRX.mode == 'a'){
+    AutoControl();
+  }
+
 }
 
