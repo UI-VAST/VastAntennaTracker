@@ -40,14 +40,16 @@ float antennaHeading;
 int setangle;
 int setheading;
 
+int curElev;
+int curAzim;
 
 unsigned long previousMillis;
 unsigned long previousMillis1;
 
-#define upPin 27
-#define downPin 26
+#define upPin 33
+#define downPin 27
 #define leftPin 25
-#define rightPin 33
+#define rightPin 26
 
 #define azimPin 34
 #define elevPin 35
@@ -326,29 +328,38 @@ void ManualControl(){
   }
 }
 
-void AutoControl(){
-  
+void ReadPosition(){
+  if(millis() > previousMillis1 + 1000){
+    //2000mv 910 
+    //3000mv 1770 
+    //4000mv 2055
+    //4500mv 2340
 
-  //2000mv 910 
-  //3000mv 1770 
-  //4000mv 2055
-  //4500mv 2340
-
-  //1000mv = 3033 6db
-  int curElev;
-  int curAzim;
-
-  if(millis() > previousMillis + 1000){
+    //1000mv = 3033 6db
+    
     int elev = analogRead(elevPin);
     int azim = analogRead(azimPin);
 
-    curElev = map(elev, 910, 2340, 0, 180);
-    curAzim = map(azim, 910, 2340, 0, 450);
+    curElev = map(elev, 0, 2150, 0, 90);
+    curAzim = map(azim, 550, 4000, 0, 360);
+    
+    
+    espTX.angle = curElev;
+    espTX.heading = curAzim;
 
-    //Serial.print("azim: ");
-    //Serial.println(curAzim);
-    //Serial.print("elev: ");
-    //Serial.println(curElev);
+    Serial.print("azim: ");
+    Serial.println(curAzim);
+    Serial.print("elev: ");
+    Serial.println(curElev);
+    
+    previousMillis1 = millis();
+  }
+}
+
+void AutoControl(){
+  
+  if(millis() > previousMillis + 1000){
+
 
     if(curAzim > setheading){
       digitalWrite(rightPin, LOW);
@@ -399,11 +410,13 @@ void setup() {
   adcAttachPin(azimPin);
   adcAttachPin(elevPin);
 
-  analogSetPinAttenuation(azimPin, ADC_6db);
-  analogSetPinAttenuation(elevPin, ADC_6db);
+  analogSetPinAttenuation(azimPin, ADC_0db);
+  analogSetPinAttenuation(elevPin, ADC_0db);
+
+  analogSetClockDiv(255);
 
   espNowSetup();
-  //Serial.begin(57600);
+  Serial.begin(57600);
 
   uart2.begin(57600, SERIAL_8N1, 19, 18);  
   rfd900.setStream(&uart2);
@@ -425,7 +438,7 @@ void setup() {
 void loop() {
   rfd900.update();
   read_gps();
-
+  ReadPosition();
 
   if(espRX.mode == 'm'){
     ManualControl();
