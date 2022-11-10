@@ -40,8 +40,6 @@ float antennaHeading;
 int setangle;
 int setheading;
 
-float angle;
-float heading;
 
 unsigned long previousMillis;
 unsigned long previousMillis1;
@@ -51,6 +49,8 @@ unsigned long previousMillis1;
 #define leftPin 25
 #define rightPin 33
 
+#define azimPin 34
+#define elevPin 35
 
 double unitCircToAzimith(double unit){
     //#input MUST be in deg
@@ -300,9 +300,11 @@ void espNowSetup(){
 
 void ManualControl(){
   if(espRX.x > 500){
+    digitalWrite(downPin, LOW);
     digitalWrite(upPin, HIGH);
   }
   if(espRX.x < -500){
+    digitalWrite(upPin, LOW);
     digitalWrite(downPin, HIGH);
   }
   if(espRX.x < 500 && espRX.x > -500){
@@ -311,9 +313,11 @@ void ManualControl(){
   }
 
   if(espRX.y > 500){
+    digitalWrite(rightPin, LOW);
     digitalWrite(leftPin, HIGH);
   }
   if(espRX.y < -500){
+    digitalWrite(leftPin, LOW);
     digitalWrite(rightPin, HIGH);
   }
   if(espRX.y < 500 && espRX.y > -500){
@@ -323,7 +327,51 @@ void ManualControl(){
 }
 
 void AutoControl(){
+  
 
+  //2000mv 910 
+  //3000mv 1770 
+  //4000mv 2055
+  //4500mv 2340
+
+  //1000mv = 3033 6db
+  int curElev;
+  int curAzim;
+
+  if(millis() > previousMillis + 1000){
+    int elev = analogRead(elevPin);
+    int azim = analogRead(azimPin);
+
+    curElev = map(elev, 910, 2340, 0, 180);
+    curAzim = map(azim, 910, 2340, 0, 450);
+
+    //Serial.print("azim: ");
+    //Serial.println(curAzim);
+    //Serial.print("elev: ");
+    //Serial.println(curElev);
+
+    if(curAzim > setheading){
+      digitalWrite(rightPin, LOW);
+      digitalWrite(leftPin, HIGH);
+    }
+    if(curAzim < setheading){
+      digitalWrite(leftPin, LOW);
+      digitalWrite(rightPin, HIGH);
+    }
+
+    if(curElev > setangle){
+      digitalWrite(upPin, LOW);
+      digitalWrite(downPin, HIGH);
+    }
+    if(curElev < setangle){
+      digitalWrite(downPin, LOW);
+      digitalWrite(upPin, HIGH);
+    }
+
+    previousMillis = millis();
+  }
+  
+  
 }
 
 
@@ -333,7 +381,7 @@ void setup() {
   digitalWrite(2, HIGH);
   delay(100);
   digitalWrite(2, LOW);
-  espNowSetup();
+  
 
   pinMode(upPin, OUTPUT);
   pinMode(downPin, OUTPUT);
@@ -345,7 +393,16 @@ void setup() {
   digitalWrite(leftPin, LOW);
   digitalWrite(rightPin, LOW);
 
+  pinMode(azimPin, INPUT);
+  pinMode(elevPin, INPUT);
+  
+  adcAttachPin(azimPin);
+  adcAttachPin(elevPin);
 
+  analogSetPinAttenuation(azimPin, ADC_6db);
+  analogSetPinAttenuation(elevPin, ADC_6db);
+
+  espNowSetup();
   //Serial.begin(57600);
 
   uart2.begin(57600, SERIAL_8N1, 19, 18);  
@@ -357,7 +414,7 @@ void setup() {
   
   
 
-  espRX.mode = 'm';
+  espRX.mode = 'a'; 
   espRX.cutdown_time = 3600;
   espRX.heading_offset = 12;
   espRX.trigger_cutdown = false;
