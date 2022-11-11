@@ -46,10 +46,11 @@ int curAzim;
 unsigned long previousMillis;
 unsigned long previousMillis1;
 
-#define upPin 33
-#define downPin 27
-#define leftPin 25
-#define rightPin 26
+#define upPin 25
+#define downPin 26
+#define leftPin 33
+#define rightPin 27
+
 
 #define azimPin 34
 #define elevPin 35
@@ -293,28 +294,28 @@ void espNowSetup(){
 //desiredAbsolutePose(balloonLat, balloonLong, balloonAlt, antennaLat, antennaLong, antennaAlt);
 
 void ManualControl(){
-  if(espRX.x > 500){
+  if(espRX.y > 500){
     digitalWrite(downPin, LOW);
     digitalWrite(upPin, HIGH);
   }
-  if(espRX.x < -500){
+  if(espRX.y < -500){
     digitalWrite(upPin, LOW);
     digitalWrite(downPin, HIGH);
   }
-  if(espRX.x < 500 && espRX.x > -500){
+  if(espRX.y < 500 && espRX.y > -500){
     digitalWrite(downPin, LOW);
     digitalWrite(upPin, LOW);
   }
 
-  if(espRX.y > 500){
+  if(espRX.x > 500){
     digitalWrite(rightPin, LOW);
     digitalWrite(leftPin, HIGH);
   }
-  if(espRX.y < -500){
+  if(espRX.x < -500){
     digitalWrite(leftPin, LOW);
     digitalWrite(rightPin, HIGH);
   }
-  if(espRX.y < 500 && espRX.y > -500){
+  if(espRX.x < 500 && espRX.x > -500){
     digitalWrite(leftPin, LOW);
     digitalWrite(rightPin, LOW);
   }
@@ -368,24 +369,47 @@ void ReadPosition(){
 }
 
 void AutoControl(){
-  
+  //update every 1 sec
   if(millis() > previousMillis + 1000){
+    bool right;
+    bool left;
 
+    int offsetHeading = setheading + espRX.heading_offset;
+    int offsetAngle = setangle + espRX.angle_offset;
 
-    if(curAzim > setheading){
+    if(curAzim < offsetHeading){
+      //go right
+      right = true;
+      left = false;
+    }
+    if(curAzim > offsetHeading){
+      //go left
+      right = false;
+      left = true;
+    }
+
+    if(abs(curAzim - offsetHeading) > 180){
+      left = !left;
+      right = !right;
+    }
+
+    
+    if(left){
       digitalWrite(rightPin, LOW);
       digitalWrite(leftPin, HIGH);
     }
-    if(curAzim < setheading){
+    if(right){
       digitalWrite(leftPin, LOW);
       digitalWrite(rightPin, HIGH);
     }
 
-    if(curElev > setangle){
+
+
+    if(curElev > offsetAngle){
       digitalWrite(upPin, LOW);
       digitalWrite(downPin, HIGH);
     }
-    if(curElev < setangle){
+    if(curElev < offsetAngle){
       digitalWrite(downPin, LOW);
       digitalWrite(upPin, HIGH);
     }
