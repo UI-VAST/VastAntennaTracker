@@ -214,7 +214,7 @@ void espNowSend(){
 
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     memcpy(&espRX, incomingData, sizeof(espRX));
-    if(espRX.trigger_cutdown == true || espRX.trigger_parachute == true || espRX.update_cutdown_time == true || espRX.RunTimer != myPacket.timer_running){
+    if(espRX.trigger_cutdown != myPacket.cutdown_status || espRX.trigger_parachute != myPacket.parachute_status || espRX.update_cutdown_time == true || espRX.RunTimer != myPacket.timer_running){
       RFDSend();
     }
 
@@ -343,17 +343,23 @@ void ReadPosition(){
     avgAzim = avgAzim/samples;
     avgElev = avgElev/samples;
 
-    curElev = map(avgElev, 0, 2150, 0, 90);
-    curAzim = map(avgAzim, 550, 4000, 0, 360);
+    curElev = map(avgElev, 500, 2725, 0, 90);
+    curAzim = map(avgAzim, 118, 3600, 0, 360);
     
     
     espTX.angle = curElev;
     espTX.heading = curAzim;
 
+    Serial.print("azimV: ");
+    Serial.println(avgAzim);
+    Serial.print("eleV: ");
+    Serial.println(avgElev);
+    Serial.println();
     Serial.print("azim: ");
     Serial.println(curAzim);
     Serial.print("elev: ");
     Serial.println(curElev);
+    Serial.println();
     
 
     espNowSend();
