@@ -209,24 +209,15 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 void espNowSend(){
   // Send message via ESP-NOW 
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &espTX, sizeof(espTX));
-  if (result == ESP_ERR_ESPNOW_NO_MEM) {
-    //Serial.println("Sent with success");
-    //digitalWrite(2, HIGH);
-    //delay(100);
-    //digitalWrite(2, LOW);
-  }
-  else {
-    //Serial.println("Error sending the data");
 
-  }
 }
 
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
     memcpy(&espRX, incomingData, sizeof(espRX));
-    if(espRX.mode == 'm'){
-
+    if(espRX.trigger_cutdown == true || espRX.trigger_parachute == true || espRX.update_cutdown_time == true || espRX.RunTimer != myPacket.timer_running){
+      RFDSend();
     }
-    
+
 }
 
 void RFDPacketReceived(const uint8_t* buffer, size_t size)
@@ -253,7 +244,8 @@ void RFDPacketReceived(const uint8_t* buffer, size_t size)
   }
   else{
     espTX.rfd_bad_packet++;
-  }  
+  }
+    
 }
 
 void read_gps(){
@@ -336,12 +328,23 @@ void ReadPosition(){
     //4500mv 2340
 
     //1000mv = 3033 6db
-    
-    int elev = analogRead(elevPin);
-    int azim = analogRead(azimPin);
 
-    curElev = map(elev, 0, 2150, 0, 90);
-    curAzim = map(azim, 550, 4000, 0, 360);
+    //adc 500-3500 linear
+    
+    //multi-sample
+    uint32_t avgElev = 0;
+    uint32_t avgAzim = 0;
+    uint8_t samples = 64;
+    for(int i = 0; i <= samples; i++){
+      avgElev = avgElev + analogRead(elevPin);
+      avgAzim = avgAzim + analogRead(azimPin);
+    }
+
+    avgAzim = avgAzim/samples;
+    avgElev = avgElev/samples;
+
+    curElev = map(avgElev, 0, 2150, 0, 90);
+    curAzim = map(avgAzim, 550, 4000, 0, 360);
     
     
     espTX.angle = curElev;
@@ -352,6 +355,8 @@ void ReadPosition(){
     Serial.print("elev: ");
     Serial.println(curElev);
     
+
+    espNowSend();
     previousMillis1 = millis();
   }
 }
@@ -416,7 +421,7 @@ void setup() {
   analogSetClockDiv(255);
 
   espNowSetup();
-  Serial.begin(57600);
+  Serial.begin(115200);
 
   uart2.begin(57600, SERIAL_8N1, 19, 18);  
   rfd900.setStream(&uart2);
@@ -446,6 +451,7 @@ void loop() {
   if(espRX.mode == 'a'){
     AutoControl();
   }
+
 
 }
 
